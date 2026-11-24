@@ -1,37 +1,45 @@
 name: Build XLHVideoGrab
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+  THEOS: ${{ github.workspace }}/theos-roothide
 
 jobs:
   build:
+    name: Build (${{ matrix.build_variant }})
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build_variant: roothide
+          # - build_variant: rootless
+
     steps:
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ldid (签名用)
-        run: brew install ldid || true
-
-      - name: Install Theos
+      - name: Setup Environment
         run: |
-          export THEOS=$HOME/theos
-          git clone --recursive https://github.com/theos/theos.git "$THEOS"
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
-          echo "$THEOS/bin" >> $GITHUB_PATH
-          echo "THEOS 已克隆到 $THEOS"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "THEOS_IGNORE_PARALLEL_BUILDING_NOTICE=yes" >> "$HOME/.theosrc"
 
-      - name: 环境自检
-        run: |
-          echo "--- 工作目录 ---"; pwd; ls -la
-          echo "--- xcodebuild ---"; xcodebuild -version || true
-          echo "--- SDK ---"; xcrun --sdk iphoneos --show-sdk-version || true
-          echo "--- make ---"; make --version | head -1
-          echo "--- theos ---"; ls "$THEOS" | head
-
-      - name: 版本一致性校验
+      - name: Version consistency
         run: |
           CONTROL_VER=$(awk '/^Version:/{print $2}' control)
           HEADER_VER=$(sed -n 's/.*#define XLH_VERSION @"\([^"]*\)".*/\1/p' VGCommon.h)
@@ -41,22 +49,59 @@ jobs:
             exit 1
           fi
 
-      - name: Build rootless deb
-        run: |
-          set -o pipefail
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tee build.log
+      - name: Checkout Theos (RootHide)
+        uses: actions/checkout@v4
+        with:
+          repository: roothide/theos
+          path: theos-roothide
+          submodules: recursive
 
-      - name: Show package
+      - name: Install iOS SDK (iPhoneOS16.5)
+        run: |
+          set -euo pipefail
+          mkdir -p "$THEOS/sdks"
+          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "iPhoneOS16.5.sdk already present"
+            exit 0
+          fi
+          SDK_STAGE="$(mktemp -d)"
+          trap 'rm -rf "$SDK_STAGE"' EXIT
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$SDK_STAGE/sdks"
+          git -C "$SDK_STAGE/sdks" sparse-checkout set iPhoneOS16.5.sdk
+          cp -R "$SDK_STAGE/sdks/iPhoneOS16.5.sdk" "$THEOS/sdks/"
+          ls -1 "$THEOS/sdks"
+
+      - name: Install Theos dependencies
+        run: |
+          brew install ldid dpkg xz
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      - name: Build Package
+        run: |
+          sh build.sh "${{ matrix.build_variant }}"
+
+      - name: Show deb info
         if: always()
         run: |
-          echo "--- packages ---"; ls -lh packages/ || true
-          echo "--- 末尾日志 ---"; tail -50 build.log || true
+          for d in packages/*.deb; do
+            [ -e "$d" ] || continue
+            echo "=== $d ==="
+            dpkg-deb -I "$d" || true
+            dpkg-deb -c "$d" | head -30 || true
+          done
 
-      - name: Upload deb
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: XLHVideoGrab-deb
-          path: packages/*.deb
+          name: packages-${{ matrix.build_variant }}
+          path: ./packages/*.deb
           if-no-files-found: error
-          retention-days: 30
+
+      - name: Create Release
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          tag_name: v${{ github.run_number }}
+          name: XLHVideoGrab ${{ github.run_number }} (${{ matrix.build_variant }})
+          files: ./packages/*.deb

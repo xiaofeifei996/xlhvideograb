@@ -5,16 +5,23 @@
 #import "VGCommon.h"
 #import <objc/runtime.h>
 
+// RootHide 工具链提供 roothide.h；对 rootful/rootless 它自带空桩实现，
+// 所以统一按可用性引入，源码只写一份。
+#if __has_include(<roothide.h>)
+#import <roothide.h>
+#endif
+
 #pragma mark - 越狱根路径
 
 NSString *VGJBPath(NSString *relative) {
-    static NSString *root = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        root = [[NSFileManager defaultManager] fileExistsAtPath:@"/var/jb"] ? @"/var/jb" : @"";
-    });
-    if (!relative.length) return root.length ? root : @"/";
-    return [root stringByAppendingPathComponent:relative];
+    // 只用于随 deb 安装的只读资源：输入必须是未转换的逻辑路径。
+    // roothide 工具链里 jbroot() 会转到随机根；rootful/rootless 下它是空桩，原样返回。
+    NSString *path = relative.length ? relative : @"/";
+#if __has_include(<roothide.h>)
+    return jbroot(path);
+#else
+    return path;
+#endif
 }
 
 #pragma mark - 配置（纯文本，方便 shell 直接改）

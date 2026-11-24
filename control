@@ -3,8 +3,10 @@ Name: XLH VideoGrab
 Version: 2.1.0
 Architecture: iphoneos-arm64
 Description: 悬浮球抓取网页/原生播放器视频链接（m3u8/mp4/mpd），支持 HLS 分片合并下载
+ 支持 Dopamine rootless (/var/jb) 与 RootHide roothide（随机 jbroot）两种打包方案。
 Maintainer: Xiaolihai AI
 Author: Xiaolihai AI
 Section: Tweaks
 Depends: firmware (>= 15.0), ellekit | mobilesubstrate
+Depiction: https://github.com/xiaofeifei996/xlhvideograb
 Tag: purpose::extension

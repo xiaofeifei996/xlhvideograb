@@ -1,6 +1,6 @@
 # XLH VideoGrab — 悬浮抓取网页视频链接
 
-> iOS 15+ / **Dopamine 无根越狱（/var/jb）** 专用插件
+> iOS 15+ / **Dopamine 无根越狱** 插件，同时支持 **RootHide（roothide 隐根）** 打包
 > 在 Safari 或任意浏览器里点一下悬浮球，就能列出当前网页里所有视频/音频真实地址，
 > 支持一键下载（含 m3u8 解析 + 分片合并）。
 
@@ -30,15 +30,16 @@
 设备上没有 theos/clang，所以用 **GitHub Actions** 云编译：
 
 1. 新建一个 GitHub 仓库（Private 也行），把本目录**所有文件**推到仓库根目录；
-2. 仓库 → Actions → `Build XLHVideoGrab` → `Run workflow`；
+2. 仓库 → Actions → `Build XLHVideoGrab` → `Run workflow`（矩阵默认只跑 `roothide`）；
 3. 跑完在本次运行页面底部下载 artifact `XLHVideoGrab-deb`，里面就是
    `com.xiaolihai.videograb_1.0.0_iphoneos-arm64.deb`。
 
-本地有 macOS + Theos 的话也可以直接：
+本地有 macOS + Theos 的话也可以直接（脚本会先 clean 再按 scheme 打包）：
 
 ```bash
-export THEOS=~/theos
-make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+export THEOS=~/theos            # roothide 必须用 roothide/theos 工具链
+sh build.sh roothide            # RootHide 隐根
+sh build.sh rootless            # 传统 Dopamine /var/jb
 ```
 
 > 若链接阶段报找不到 `libsubstrate`，把 `Makefile` 里的
@@ -58,6 +59,9 @@ make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
 确认文件落位：
 
 ```sh
+# RootHide（bootstrap 里 "/" 就是随机 jbroot）
+ls /usr/lib/TweakInject/ | grep -i xlh
+# 传统 Dopamine rootless
 ls /var/jb/usr/lib/TweakInject/ | grep -i xlh
 # XLHVideoGrab.dylib
 # XLHVideoGrab.plist
